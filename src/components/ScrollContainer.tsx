@@ -16,43 +16,42 @@ const ScrollContainer = ({ children, scrollCta, isNewSession, callNewSession }: 
   const outerDiv = useRef<HTMLDivElement | null>(null);
   const innerDiv = useRef<HTMLDivElement | null>(null);
 
-  const prevInnerDivHeight = useRef(null);
+  const prevInnerDivHeight = useRef(-1);
 
   const [showMessages, setShowMessages] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   useEffect(() => {
-    const outerDivHeight = outerDiv.current.clientHeight;
-    const innerDivHeight = innerDiv.current.clientHeight;
-    const outerDivScrollTop = outerDiv.current.scrollTop;
-
+    const outerDivHeight = outerDiv?.current?.clientHeight;
+    const innerDivHeight = innerDiv?.current?.clientHeight;
+    const outerDivScrollTop = outerDiv?.current?.scrollTop;
+  
     if (
       !prevInnerDivHeight.current ||
-      outerDivScrollTop === prevInnerDivHeight.current - outerDivHeight
+      outerDivScrollTop === (prevInnerDivHeight.current - (outerDivHeight || 0))
     ) {
-      outerDiv.current.scrollTo({
-        top:  innerDivHeight - outerDivHeight,
-        left: 0,
+      innerDiv?.current?.scrollIntoView({
         behavior: prevInnerDivHeight.current ? "smooth" : "auto"
       });
       setShowMessages(true);
     } else {
       setShowScrollButton(true);
     }
-
-    prevInnerDivHeight.current = innerDivHeight;
+    
+  
+    prevInnerDivHeight.current = innerDivHeight as number
+    
+    
   }, [children]);
-
+  
   const handleScrollButtonClick = useCallback(() => {
-    const outerDivHeight = outerDiv.current.clientHeight;
-    const innerDivHeight = innerDiv.current.clientHeight;
-
-    outerDiv.current.scrollTo({
-      top: innerDivHeight - outerDivHeight,
-      left: 0,
+    const outerDivHeight = outerDiv?.current?.clientHeight;
+    const innerDivHeight = innerDiv?.current?.clientHeight;
+  
+    innerDiv?.current?.scrollIntoView({
       behavior: "smooth"
     });
-
+  
     setShowScrollButton(false);
   }, []);
 

@@ -2,25 +2,31 @@ import { h, VNode } from 'preact';
 
 import './Widget.island.css';
 import { useEffect, useState } from 'preact/compat';
-import { ChatHistoryType, MessageHistoryType } from './lib/types';
-import { newSession, addNewQuestion } from './lib/api-helper';
+import { ChatHistoryType, MessageHistoryType } from './libs/types';
+
 import ScrollContainer from './components/ScrollContainer'
 import ChatInput from './components/ChatInput'
 import Message from './components/Message'
 import cls from 'classnames'
-import dayjs from './lib/date-utils';
-
+import dayjs from './libs/date-utils';
+import { createChatSocket, newSession, postData, receiveMessageFromServer, sendMessageToServer } from './libs/api-helper';
+import { ChatMessageBodyType } from './libs/types/ChatMessageBodyType';
+import { v4 as uuid } from 'uuid'
+import { defaultIntroMessage, getIntroMessageUrl } from './libs/constants';
+import axios from 'redaxios';
 
 interface Props {
-    userId: string,
-    agentId: string,
+    baseUrl: string,
     theme: string
 }
 
 // floating-chat
 // cross-icon
+
+let socket: WebSocket | undefined
+
 export default function App(props: Props): VNode {
-    const [messageHistory, setMessageHistory] = useState<MessageHistoryType>([])
+    const [chatMessageBody, setChatMessageBody] = useState<ChatMessageBodyType>()
     const [tokenCount, setTokenCount] = useState<number>(0)
     const [isNewSession, setIsNewSession] = useState<boolean>(false)
     const [chatHistory, setChatHistory] = useState<ChatHistoryType | []>([{
@@ -29,22 +35,89 @@ export default function App(props: Props): VNode {
         id: 0,
         date: dayjs().format(),
     }])
-    const [isLoading, setIsLoading] = useState<boolean>(false)
     const [isChat, setIsChat] = useState<boolean>(false)
+    const [introMessage, setIntroMessage] = useState<string>('')
+
+    const baseUrl = props?.baseUrl
+    const theme = props?.theme
 
     useEffect(() => {
-        if (tokenCount > max_tokens) {
-            setIsNewSession(true)
-        }
-    }, [tokenCount])
-    
-    const userId = props?.userId
-    const agentId = props?.agentId
+        (async () => {
+            try {
+                socket = await createChatSocket()
+            } catch (e) {
+                console.log(e, ' unable to connect')
+            }
+        })()
+    }, [])
 
-    const callNewSession = () => {
-        newSession(
-            setMessageHistory,
-            setTokenCount,
+
+    // intro message if any
+    useEffect(() => {
+        (async () => {
+            try {
+                if (baseUrl) {
+                    const response = await axios.post(getIntroMessageUrl, 
+                        {
+                            baseUrl,
+                        }, {
+                        headers: {
+                        'Content-Type': 'application/json'
+                        },
+                    })
+            
+                    if (response?.data?.event) {
+                        const introMessage = response?.data?.event
+                        setChatHistory([{
+                            role: 'assistant',
+                            content: introMessage,
+                            id: 0,
+                            date: dayjs().format(),
+                        }])
+                    }
+                }
+            } catch (e) {
+                console.log(e, ' unable to get intro message')
+            }
+        })()
+    }, [baseUrl])
+
+    socket?.addEventListener("open", (event) => {
+        console.log(event, 'connection established')
+
+    })
+    
+    socket?.addEventListener("message", async (event) => {
+        // SkillMessageHistoryType
+        console.log(event,  ' message from api')
+        console.log("Message from server ", event.data);
+        /**
+         * {"skill":"ask-availability","query":"completed","messages":[{"role":"user","content":"what is my availability like on Aug 7th?"},{"role":"assistant","content":"On August 7th, 2023, you have the following availability:\n- From 2:30 PM to 3:00 PM\n- From 5:00 PM to 11:00 PM."}],"required":null}
+         */
+        const body: ChatMessageBodyType = JSON.parse(event.data)
+        
+        setChatMessageBody(body)
+
+        await onReceiveMessage(body)
+    })
+
+    const onReceiveMessage = async (body: ChatMessageBodyType) => {
+        try {
+            
+            await receiveMessageFromServer(
+                body,
+                chatHistory,
+                setChatHistory,
+            )
+        } catch (e) {
+            console.log(e, ' unable to receive message')
+        }
+    }
+
+    const callNewSession = async () => {
+        await newSession(
+            baseUrl,
+            setChatMessageBody,
             setChatHistory,
         )
 
@@ -58,17 +131,32 @@ export default function App(props: Props): VNode {
     const onSendMessage = async (text: string) => {
         try {
             console.log(text, ' text inside onSendMessage')
-            await addNewQuestion(
-                text,
-                userId,
-                agentId,
-                messageHistory,
-                setMessageHistory,
-                chatHistory,
-                setChatHistory,
-                setIsLoading,
-                setTokenCount,
-            )
+            // sendMessageToServer
+            let newChatMessageBody: ChatMessageBodyType | undefined = chatMessageBody
+
+            if (!newChatMessageBody?.id) {
+                const messageHistory: MessageHistoryType = [{
+                    role: 'assistant',
+                    content: defaultIntroMessage,
+                }]
+                newChatMessageBody = {
+                    messageHistory,
+                    question: text,
+                    base_url: baseUrl,
+                    id: uuid()
+                }
+
+                setChatMessageBody(newChatMessageBody)
+            } else {
+                newChatMessageBody.id = uuid()
+                newChatMessageBody.question = text
+                setChatMessageBody(newChatMessageBody)
+            }
+
+            if (socket) {
+                await sendMessageToServer(socket, newChatMessageBody, text, chatHistory, setChatHistory)
+            }
+           
         } catch (e) {
             console.log(e, ' unable to send message')
         }
@@ -77,12 +165,12 @@ export default function App(props: Props): VNode {
     console.log(chatHistory, ' chatHistory')
     
     return (
-        <div className="fixed bottom-20 right-20 flex flex-col justify-center items-end w-full z-10">
+        <div data-theme={theme} className="fixed bottom-20 right-20 flex flex-col justify-center items-end w-full z-10">
             <div className={cls('h-auto rounded-lg border border-primary my-2', { hidden: !isChat })}>
                 <div
                     class="flex items-center justify-between rounded-t-lg bg-primary py-4 px-6 w-full"
                 >
-                    <h3 className="text-xl font-bold text-white">Let's chat? - Online</h3>
+                    <h3 className="text-xl font-bold text-white">Let's chat?</h3>
                     <button onClick={toggleChat} className="text-white">
                         <svg width="15" height="15" viewBox="0 0 17 17" class="fill-current">
                             <path
@@ -102,13 +190,7 @@ export default function App(props: Props): VNode {
                     {
                         (chatHistory as ChatHistoryType)?.map((m, i) => (
                             <div key={m.id}>
-                                {((chatHistory?.length - 1) === i)
-                                    ? (
-                                        <Message key={m.id} message={m} isLoading={isLoading} />
-                                    ) : (
-                                        <Message key={m.id} message={m} />
-                                    )
-                                }
+                                <Message key={m.id} message={m} />
                             </div>
                         ))
                     }

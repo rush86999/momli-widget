@@ -16,7 +16,7 @@ type Props = {
 
     const onChangeText = (e: h.JSX.TargetedEvent<HTMLTextAreaElement>) => (setText(e.currentTarget.value))
 
-    const onSubmit = (e) => {
+    const onSubmit = (e: { preventDefault: () => void; }) => {
         e.preventDefault()
         // validate
         if (!text) {
@@ -47,7 +47,7 @@ type Props = {
                             <span className={cls("sr-only", { hidden: !isChat })}>Send message</span>
                         </button>
                     </div>
-                    <h4 className="text-l py-1 text-white text-center">Powered by <a className="hover:underline hover:text-xl hover:font-bold" href="https://sitebot.atomiclife.app">SiteBot</a></h4>
+                    <h4 className="text-l py-1 text-white text-center">Powered by <a className="hover:underline hover:text-xl hover:font-bold" href="https://www.thecx.app">CX</a></h4>
                 </div>
             </form>
         </div>
