@@ -42,6 +42,7 @@ export type UserChatType = {
     content: string,
     id: number,
     date: string,
+    name?: string,
 }
 
 

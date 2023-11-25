@@ -15,7 +15,7 @@ function Message({ message }: Props): VNode {
                 ? (
                     <div className="chat chat-end">
                         <div className="chat-header">
-                            You
+                            {message?.name ? message?.name : 'You'}
                         </div>
                         <div className="chat-bubble chat-bubble-primary">{message.content}</div>
                         <div className="chat-footer opacity-50">
@@ -26,7 +26,7 @@ function Message({ message }: Props): VNode {
                     <div className="chat chat-start">
                         <div>
                             <div className="chat-header">
-                                Assistant
+                                { message?.name ? message?.name : 'Bot'}
                             </div>
                             <div className="chat-bubble chat-bubble-secondary">{message.content}</div>
                             <div className="chat-footer opacity-50">

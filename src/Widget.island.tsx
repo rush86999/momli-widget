@@ -7,12 +7,13 @@ import { ChatHistoryType, MessageHistoryType } from './libs/types';
 import ScrollContainer from './components/ScrollContainer'
 import ChatInput from './components/ChatInput'
 import Message from './components/Message'
+import RegisterClient from './components/RegisterClient'
 import cls from 'classnames'
 import dayjs from './libs/date-utils';
-import { createChatSocket, newSession, postData, receiveMessageFromServer, sendMessageToServer } from './libs/api-helper';
+import { createChatSocket, newSession, receiveMessageFromServer, sendMessageToServer } from './libs/api-helper';
 import { ChatMessageBodyType } from './libs/types/ChatMessageBodyType';
 import { v4 as uuid } from 'uuid'
-import { defaultIntroMessage, getIntroMessageUrl } from './libs/constants';
+import { chatStateEnum, defaultIntroMessage, getIntroMessageUrl } from './libs/constants';
 import axios from 'redaxios';
 
 interface Props {
@@ -27,7 +28,6 @@ let socket: WebSocket | undefined
 
 export default function App(props: Props): VNode {
     const [chatMessageBody, setChatMessageBody] = useState<ChatMessageBodyType>()
-    const [tokenCount, setTokenCount] = useState<number>(0)
     const [isNewSession, setIsNewSession] = useState<boolean>(false)
     const [chatHistory, setChatHistory] = useState<ChatHistoryType | []>([{
         role: 'assistant',
@@ -35,8 +35,21 @@ export default function App(props: Props): VNode {
         id: 0,
         date: dayjs().format(),
     }])
-    const [isChat, setIsChat] = useState<boolean>(false)
+    const [isOpenWindow, setIsOpenWindow] = useState<boolean>(false)
     const [introMessage, setIntroMessage] = useState<string>('')
+    const [botId, setBotId] = useState<string>('')
+    const [userId, setUserId] = useState<string>('')
+    const [clientId, setClientId] = useState<string>('')
+    const [botKnowledgebaseId, setBotKnowledgebaseId] = useState<string>('')
+    const [roomId, setRoomId] = useState<string>('')
+    const [threadId, setThreadId] = useState<string>('')
+    const [teamId, setTeamId] = useState<string>('')
+    const [name, setName] = useState<string>('')
+    const [email, setEmail] = useState<string>('')
+    const [clientVerified, setClientVerified] = useState<boolean>(false)
+    const [chatState, setChatState] = useState<chatStateEnum>(chatStateEnum.INITIAL)
+
+
 
     const baseUrl = props?.baseUrl
     const theme = props?.theme
@@ -67,10 +80,11 @@ export default function App(props: Props): VNode {
                     })
             
                     if (response?.data?.event) {
-                        const introMessage = response?.data?.event
+                        const oldIntroMessage = response?.data?.event
+                        setIntroMessage(oldIntroMessage)
                         setChatHistory([{
                             role: 'assistant',
-                            content: introMessage,
+                            content: oldIntroMessage,
                             id: 0,
                             date: dayjs().format(),
                         }])
@@ -125,7 +139,7 @@ export default function App(props: Props): VNode {
     }
 
     const toggleChat = () => {
-        setIsChat(!isChat)
+        setIsOpenWindow(!isOpenWindow)
     }
 
     const onSendMessage = async (text: string) => {
@@ -137,19 +151,62 @@ export default function App(props: Props): VNode {
             if (!newChatMessageBody?.id) {
                 const messageHistory: MessageHistoryType = [{
                     role: 'assistant',
-                    content: defaultIntroMessage,
+                    content: introMessage ?? defaultIntroMessage,
                 }]
                 newChatMessageBody = {
                     messageHistory,
                     question: text,
                     base_url: baseUrl,
-                    id: uuid()
+                    id: uuid(),
                 }
+
+                if (botId && !newChatMessageBody.botId) {
+                    newChatMessageBody.botId = botId
+                }
+
+                if (userId && !newChatMessageBody.userId) {
+                    newChatMessageBody.userId = userId
+                }
+
+                if (botKnowledgebaseId && !newChatMessageBody.botKnowledgebaseId) {
+                    newChatMessageBody.botKnowledgebaseId = botKnowledgebaseId
+                }
+
+                if (roomId && !newChatMessageBody.roomId) {
+                    newChatMessageBody.roomId = roomId
+                }
+
+                if (threadId && !newChatMessageBody.threadId) {
+                    newChatMessageBody.threadId = threadId
+                }
+
+                if (teamId && !newChatMessageBody.teamId) {
+                    newChatMessageBody.teamId = teamId
+                }
+
+                if (name && !newChatMessageBody?.clientName) {
+                    newChatMessageBody.clientName = name
+                }
+
+                if (email && !newChatMessageBody?.clientEmail) {
+                    newChatMessageBody.clientEmail = email
+                }
+
+                if (clientId && !newChatMessageBody?.clientId) {
+                    newChatMessageBody.clientId = clientId
+                }
+
+                newChatMessageBody.activeRole = 'bot'
+
+                newChatMessageBody.isClient = true
+
+                newChatMessageBody.router = 'user_question'
 
                 setChatMessageBody(newChatMessageBody)
             } else {
                 newChatMessageBody.id = uuid()
                 newChatMessageBody.question = text
+                newChatMessageBody.isClient = true
                 setChatMessageBody(newChatMessageBody)
             }
 
@@ -163,10 +220,89 @@ export default function App(props: Props): VNode {
     }
 
     console.log(chatHistory, ' chatHistory')
+
+    const switchToChatView = () => setChatState(chatStateEnum.CHAT)
+
+    const switchToInitialView = () => setChatState(chatStateEnum.INITIAL)
+
+    const switchToSignInView = () => setChatState(chatStateEnum.SIGNIN)
+
+    const renderChatView = () => {
+        switch (chatState) {
+            case chatStateEnum.CHAT:
+                return (
+                    <div className="animate-fade">
+                        <ScrollContainer scrollCta="New Message!" isNewSession={isNewSession} callNewSession={callNewSession}>
+                        {
+                            (chatHistory as ChatHistoryType)?.map((m, i) => (
+                                <div key={m.id}>
+                                    <Message key={m.id} message={m} />
+                                </div>
+                            ))
+                        }
+                        </ScrollContainer>
+                        <ChatInput isChat={isOpenWindow} sendMessage={onSendMessage} isNewSession={isNewSession} />
+                    </div>
+                )
+            
+            case chatStateEnum.INITIAL:
+                return (
+                    <div className="animate-fade">
+                        <div className="relative h-[375px] w-full max-w-[550px] sm:min-w-[400px] bg-primary-content flex flex-col justify-center items-center">
+                            <div>
+                                <button className="btn btn-primary" onClick={switchToSignInView}>
+                                    Add your details
+                                </button>
+                                <button className="btn btn-primary" onClick={switchToChatView}>
+                                    Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            case chatStateEnum.SIGNIN:
+                return (
+                    <div className="animate-fade">
+                        <RegisterClient
+                            baseUrl={baseUrl}
+                            clientId={clientId}
+                            setBotId={setBotId}
+                            setUserId={setUserId}
+                            setClientId={setClientId}
+                            setBotKnowledgebaseId={setBotKnowledgebaseId}
+                            setRoomId={setRoomId}
+                            setThreadId={setThreadId}
+                            setTeamId={setTeamId}
+                            setName={setName}
+                            setEmail={setEmail}
+                            setClientVerified={setClientVerified}
+                            setChatState={setChatState}
+                            name={name}
+                            email={email}
+                        />
+                    </div>
+                )
+            default:
+                return (
+                    <div className="animate-fade">
+                        <div className="relative h-[375px] w-full max-w-[550px] sm:min-w-[400px] bg-primary-content flex flex-col justify-center items-center">
+                            <div>
+                                <button className="btn btn-primary" onClick={switchToSignInView}>
+                                    Add your details
+                                </button>
+                                <button className="btn btn-primary" onClick={switchToChatView}>
+                                    Chat
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+        }
+    }
     
     return (
         <div data-theme={theme} className="fixed bottom-20 right-20 flex flex-col justify-center items-end w-full z-10">
-            <div className={cls('h-auto rounded-lg border border-primary my-2', { hidden: !isChat })}>
+            <div className={cls('h-auto rounded-lg border border-primary my-2 animate-fade-up', { hidden: !isOpenWindow })}>
                 <div
                     class="flex items-center justify-between rounded-t-lg bg-primary py-4 px-6 w-full"
                 >
@@ -186,22 +322,13 @@ export default function App(props: Props): VNode {
                         </svg>
                     </button>
                 </div>
-                <ScrollContainer scrollCta="New Message!" isNewSession={isNewSession} callNewSession={callNewSession}>
-                    {
-                        (chatHistory as ChatHistoryType)?.map((m, i) => (
-                            <div key={m.id}>
-                                <Message key={m.id} message={m} />
-                            </div>
-                        ))
-                    }
-                </ScrollContainer>
-                <ChatInput isChat={isChat} sendMessage={onSendMessage} isNewSession={isNewSession} />
+                {renderChatView()}
             </div>
             <button
                 className="flex h-[70px] w-[70px] items-center justify-center rounded-full bg-primary text-white"
                 onClick={toggleChat}
             >
-                <span className={cls({ hidden: !isChat })}>
+                <span className={cls({ hidden: !isOpenWindow })}>
                     <svg
                         width="17"
                         height="17"
@@ -223,7 +350,7 @@ export default function App(props: Props): VNode {
                         />
                     </svg>
                 </span>
-                <span className={cls({ hidden: isChat })}>
+                <span className={cls({ hidden: isOpenWindow })}>
                     <svg
                         width="28"
                         height="28"

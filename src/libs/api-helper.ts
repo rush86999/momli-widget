@@ -1,9 +1,9 @@
 import axios from 'redaxios'
 import { StateUpdater } from "preact/hooks"
-import { ChatHistoryType, ChatResponseType, MessageHistoryType, UserChatType } from "./types"
-import { agentBotUrl, cxBotWSDevUrl, defaultIntroMessage, getIntroMessageUrl } from "./constants"
+import { ChatHistoryType, MessageHistoryType, UserChatType } from "./types"
+import { cxBotWSDevUrl, defaultIntroMessage, getIntroMessageUrl } from "./constants"
 import dayjs from './date-utils'
-import { ChatGPTMessageHistoryType, ChatMessageBodyType } from './types/ChatMessageBodyType'
+import { ChatMessageBodyType } from './types/ChatMessageBodyType'
 import { v4 as uuid } from 'uuid'
 import _ from 'lodash'
 
@@ -14,23 +14,6 @@ export const createChatSocket = async () => {
         return socket
     } catch (e) {
         console.log(e, ' unable to create client')
-    }
-}
-
-export const postData = async (
-    body: unknown,
-) => {
-    try {
-        // production build code
-        const response = await axios.post(agentBotUrl, body, {
-            headers: {
-            'Content-Type': 'application/json'
-            },
-        })
-
-        return response.data
-    } catch (e) {
-        console.log(e, ' unable to post data')
     }
 }
 
@@ -59,6 +42,7 @@ export const sendMessageToServer = async (
         content: userMessage,
         id: chatHistory?.length, // old length so matche index
         date: dayjs().format(),
+        name: chatMessageBody?.clientName,
     }])
 
     setChatHistory(newChatHistory)
@@ -89,8 +73,10 @@ export const receiveMessageFromServer = async (
     setChatHistory: StateUpdater<ChatHistoryType | []>,
 ) => {
     try {
+        
         const serverMessagedHistory = chatMessageBody?.messageHistory
-        const lastMessage = serverMessagedHistory?.[(serverMessagedHistory?.length - 1) || 0]
+        const length = serverMessagedHistory?.length
+        const lastMessage = serverMessagedHistory?.[length - 1 === -1 ? 0 : length - 1]
         
         const clonedChatHistory = _.clone(chatHistory)
         
@@ -101,7 +87,26 @@ export const receiveMessageFromServer = async (
                 ...lastMessage,
             }
 
-            clonedChatHistory[(clonedChatHistory?.length - 1) || 0] = newChatMessage
+            const cloneLength = clonedChatHistory?.length
+            if (clonedChatHistory[cloneLength - 1 === -1 ? 0 : cloneLength - 1]?.role === 'assistant') {
+
+                clonedChatHistory[cloneLength - 1 === -1 ? 0 : cloneLength - 1].content += lastMessage?.content
+
+                if (!clonedChatHistory[cloneLength - 1 === -1 ? 0 : cloneLength - 1]?.name) {
+                    if (chatMessageBody?.agentName) {
+                        clonedChatHistory[cloneLength - 1 === -1 ? 0 : cloneLength - 1].name = chatMessageBody?.agentName
+                    }
+                }
+            } else {
+                clonedChatHistory[cloneLength] = newChatMessage
+
+                if (!clonedChatHistory[cloneLength]?.name) {
+                    if (chatMessageBody?.agentName) {
+                        clonedChatHistory[cloneLength].name = chatMessageBody?.agentName
+                    }
+                }
+            }
+            
         }
 
         setChatHistory(clonedChatHistory)
